@@ -1,0 +1,414 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>Poker Tournament Clock</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --green-dark: #0d2b17;
+    --green-bright: #2d7a45;
+    --gold: #c9a84c;
+    --gold-light: #f0d080;
+    --gold-dim: #7a6030;
+    --white: #f5f0e8;
+    --gray: #8a9a8a;
+    --danger: #c0392b;
+    --warning: #e67e22;
+  }
+
+  html, body { height: 100%; width: 100%; overflow: hidden; background: var(--green-dark); font-family: 'Arial Narrow', Arial, sans-serif; }
+
+  .app { display: flex; flex-direction: column; height: 100vh; width: 100vw; position: relative; }
+
+  .felt { position: fixed; inset: 0; pointer-events: none; z-index: 0; background: radial-gradient(ellipse at 50% 0%, rgba(45,122,69,0.15) 0%, transparent 60%); }
+
+  .suits { position: fixed; font-size: 120px; opacity: 0.04; pointer-events: none; z-index: 0; user-select: none; }
+  .suits-tl { top: -20px; left: -10px; }
+  .suits-br { bottom: -20px; right: -10px; transform: rotate(180deg); }
+
+  /* TIMER SECTION */
+  .timer-section {
+    flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center;
+    position: relative; border-bottom: 2px solid var(--gold-dim); z-index: 1; padding: 16px;
+  }
+
+  .level-badge {
+    font-size: clamp(12px,2.5vw,18px); font-weight: 300; letter-spacing: 6px;
+    text-transform: uppercase; color: var(--gold); margin-bottom: 8px; opacity: 0.85;
+  }
+
+  .countdown {
+    font-size: clamp(72px,20vw,160px); font-weight: 700; color: var(--white); line-height: 1;
+    letter-spacing: -2px; text-shadow: 0 0 40px rgba(201,168,76,0.3), 0 4px 20px rgba(0,0,0,0.8);
+    transition: color 0.5s, text-shadow 0.5s;
+  }
+  .countdown.warning { color: var(--warning); text-shadow: 0 0 40px rgba(230,126,34,0.5), 0 4px 20px rgba(0,0,0,0.8); }
+  .countdown.danger  { color: var(--danger);  text-shadow: 0 0 60px rgba(192,57,43,0.7), 0 4px 20px rgba(0,0,0,0.8); animation: pulse 0.5s ease-in-out infinite alternate; }
+
+  @keyframes pulse { from { opacity:1; } to { opacity:0.6; } }
+  @keyframes blink { 0%,100% { opacity:1; } 50% { opacity:0.2; } }
+  @keyframes shake { 0%,100% { transform:rotate(0deg); } 25% { transform:rotate(-8deg); } 75% { transform:rotate(8deg); } }
+
+  .progress-wrap { width: 80%; max-width: 500px; height: 6px; background: rgba(255,255,255,0.08); border-radius: 3px; margin-top: 20px; overflow: hidden; }
+  .progress-fill { height: 100%; border-radius: 3px; background: linear-gradient(90deg, var(--gold-dim), var(--gold)); transition: width 1s linear, background 0.5s; }
+  .progress-fill.warning { background: linear-gradient(90deg,#b35c10,var(--warning)); }
+  .progress-fill.danger  { background: linear-gradient(90deg,#7a1510,var(--danger)); }
+
+  .divider { position: absolute; bottom: -1px; left: 50%; transform: translateX(-50%); width: 60px; height: 3px; background: var(--gold); border-radius: 2px; z-index: 2; }
+
+  /* BLINDS SECTION */
+  .blinds-section {
+    flex: 1; display: flex; flex-direction: column; align-items: center;
+    justify-content: center; z-index: 1; padding: 16px 24px; gap: 10px;
+  }
+
+  .blinds-label { font-size: clamp(10px,2vw,14px); letter-spacing: 5px; text-transform: uppercase; color: var(--gold-dim); font-weight: 300; }
+
+  .blinds-display { display: flex; align-items: center; gap: clamp(16px,4vw,40px); }
+
+  .blind-card { display: flex; flex-direction: column; align-items: center; gap: 4px; }
+  .blind-title { font-size: clamp(10px,2vw,13px); letter-spacing: 3px; text-transform: uppercase; color: var(--gray); font-weight: 600; }
+  .blind-amount { font-size: clamp(40px,11vw,90px); font-weight: 700; color: var(--gold-light); line-height: 1; text-shadow: 0 2px 12px rgba(0,0,0,0.6); }
+  .blind-sep { font-size: clamp(30px,8vw,70px); color: var(--gold-dim); font-weight: 300; line-height: 1; align-self: center; margin-bottom: 4px; }
+
+  .rebuy-badge {
+    display: inline-flex; align-items: center; gap: 6px;
+    background: rgba(45,122,69,0.25); border: 1px solid var(--green-bright);
+    border-radius: 20px; padding: 4px 14px; font-size: clamp(10px,2vw,13px);
+    letter-spacing: 2px; text-transform: uppercase; color: #6ecf8a; font-weight: 600;
+  }
+  .dot { width: 7px; height: 7px; background: #6ecf8a; border-radius: 50%; animation: blink 1.2s ease-in-out infinite; }
+
+  .next-level { font-size: clamp(11px,2vw,14px); color: var(--gray); letter-spacing: 1px; opacity: 0.7; }
+  .next-level span { color: var(--gold-dim); font-weight: 600; }
+
+  /* CONTROLS */
+  .controls { display: flex; gap: 12px; align-items: center; z-index: 1; padding: 0 0 20px; justify-content: center; }
+
+  .btn {
+    font-family: 'Arial Narrow', Arial, sans-serif;
+    font-size: clamp(13px,2.5vw,18px); letter-spacing: 3px; font-weight: 700;
+    text-transform: uppercase; border: none; cursor: pointer; border-radius: 4px;
+    padding: clamp(10px,2vw,14px) clamp(20px,4vw,36px); transition: all 0.15s;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .btn:active { transform: scale(0.96); }
+
+  .btn-primary { background: linear-gradient(135deg,#1a5c2a,var(--green-bright)); color: var(--gold-light); border: 1px solid var(--gold-dim); box-shadow: 0 4px 16px rgba(0,0,0,0.5); }
+  .btn-secondary { background: rgba(255,255,255,0.06); color: var(--gray); border: 1px solid rgba(255,255,255,0.12); }
+  .btn-gold { background: linear-gradient(135deg,var(--gold-dim),#a07830); color: var(--green-dark); border: 1px solid var(--gold); box-shadow: 0 4px 16px rgba(0,0,0,0.5); }
+
+  /* OVERLAYS */
+  .overlay {
+    position: fixed; inset: 0; display: flex; flex-direction: column;
+    align-items: center; justify-content: center; gap: 20px;
+    background: rgba(8,28,14,0.93); z-index: 200;
+    opacity: 0; pointer-events: none; transition: opacity 0.4s;
+  }
+  .overlay.show { opacity: 1; pointer-events: all; }
+
+  .overlay-sub  { font-size: clamp(12px,2.5vw,18px); color: var(--gray); letter-spacing: 3px; text-transform: uppercase; text-align: center; }
+  .overlay-title { font-size: clamp(24px,6vw,48px); color: var(--gold); letter-spacing: 8px; text-transform: uppercase; text-align: center; }
+  .overlay-blinds { font-size: clamp(32px,10vw,80px); color: var(--white); font-weight: 700; text-align: center; }
+
+  .rebuy-title { font-size: clamp(22px,5vw,42px); color: #ff4444; letter-spacing: 5px; text-transform: uppercase; text-align: center; text-shadow: 0 0 30px rgba(255,60,60,0.6); }
+  .rebuy-body  { font-size: clamp(14px,3vw,20px); color: var(--white); text-align: center; max-width: 480px; line-height: 1.5; padding: 0 24px; opacity: 0.9; }
+  .rebuy-body strong { color: var(--gold-light); }
+  .rebuy-timer { font-size: clamp(36px,9vw,70px); color: #ff6666; font-weight: 700; letter-spacing: 2px; text-shadow: 0 0 20px rgba(255,60,60,0.5); }
+
+  .break-note {
+    font-size: clamp(12px,2.5vw,17px); color: #6ecf8a; letter-spacing: 2px; text-align: center;
+    background: rgba(45,122,69,0.15); border: 1px solid var(--green-bright); border-radius: 8px; padding: 10px 24px;
+  }
+
+  .shake-icon { font-size: clamp(48px,10vw,80px); animation: shake 0.5s ease-in-out 3; }
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="felt"></div>
+  <div class="suits suits-tl">♠♥</div>
+  <div class="suits suits-br">♦♣</div>
+
+  <!-- Timer -->
+  <div class="timer-section">
+    <div class="level-badge" id="levelBadge">LEVEL 1</div>
+    <div class="countdown" id="countdown">20:00</div>
+    <div class="progress-wrap"><div class="progress-fill" id="progressBar" style="width:100%"></div></div>
+    <div class="divider"></div>
+  </div>
+
+  <!-- Blinds -->
+  <div class="blinds-section">
+    <div class="blinds-label">Current Blinds</div>
+    <div class="blinds-display">
+      <div class="blind-card">
+        <div class="blind-title">Small</div>
+        <div class="blind-amount" id="smallBlind">$1</div>
+      </div>
+      <div class="blind-sep">/</div>
+      <div class="blind-card">
+        <div class="blind-title">Big</div>
+        <div class="blind-amount" id="bigBlind">$2</div>
+      </div>
+    </div>
+    <div class="rebuy-badge" id="rebuyBadge"><span class="dot"></span> Rebuys Open</div>
+    <div class="next-level" id="nextLevel"></div>
+  </div>
+
+  <!-- Controls -->
+  <div class="controls">
+    <button class="btn btn-secondary" onclick="resetTimer()">&#8635; Reset</button>
+    <button class="btn btn-primary" id="startBtn" onclick="toggleTimer()">&#9654; Start</button>
+  </div>
+</div>
+
+<!-- Rebuy Warning Overlay -->
+<div class="overlay" id="rebuyOverlay">
+  <div class="shake-icon">&#9888;&#65039;</div>
+  <div class="rebuy-title">Last Chance to Rebuy!</div>
+  <div class="rebuy-body">Level 3 ends soon. <strong>Rebuys close at the break.</strong><br>Players who want back in must rebuy before the clock hits zero.</div>
+  <div class="rebuy-timer" id="rebuyCountdown">05:00</div>
+  <div class="overlay-sub">Remaining in Level 3</div>
+  <button class="btn btn-gold" onclick="dismissRebuy()">Got It &#8212; Keep Playing</button>
+</div>
+
+<!-- Level Up Overlay -->
+<div class="overlay" id="levelUpOverlay">
+  <div class="overlay-sub">Time's Up &#8212; Next Level</div>
+  <div class="overlay-title" id="nextLevelTitle"></div>
+  <div class="overlay-blinds" id="nextLevelBlinds"></div>
+  <button class="btn btn-gold" onclick="advanceLevel()">&#9654; Start Next Level</button>
+</div>
+
+<!-- Break Overlay -->
+<div class="overlay" id="breakOverlay">
+  <div class="overlay-sub">Level 3 Complete</div>
+  <div class="overlay-title">&#9749; 5-Minute Break</div>
+  <div class="overlay-blinds" id="breakNextBlinds"></div>
+  <div class="break-note">Color Up White Chips &middot; Rebuys Now Closed</div>
+  <button class="btn btn-gold" onclick="advanceLevel()">&#9654; Start Level 4</button>
+</div>
+
+<!-- Tournament Over Overlay -->
+<div class="overlay" id="doneOverlay">
+  <div style="font-size:clamp(48px,10vw,72px)">&#127942;</div>
+  <div class="overlay-title">Tournament Complete</div>
+  <div class="overlay-blinds">Great game, everyone!</div>
+  <button class="btn btn-gold" onclick="loadLevel(0)">&#8635; Restart Tournament</button>
+</div>
+
+<script>
+var SCHEDULE = [
+  { level:1, small:1,  big:2,   minutes:20 },
+  { level:2, small:2,  big:4,   minutes:20 },
+  { level:3, small:4,  big:8,   minutes:20 },
+  { level:4, small:5,  big:10,  minutes:20 },
+  { level:5, small:10, big:20,  minutes:20 },
+  { level:6, small:20, big:40,  minutes:20 },
+  { level:7, small:30, big:60,  minutes:20 },
+  { level:8, small:50, big:100, minutes:20 }
+];
+
+var LAST_REBUY = 2;
+var BREAK_AFTER = 2;
+var REBUY_WARN = 300;
+var DING_WARN = 45;
+
+var curIdx = 0, secsLeft = 0, totalSecs = 0;
+var running = false, interval = null;
+var rebuyWarned = false, dingWarned = false;
+
+// --- AUDIO (Web Audio API: works reliably on iPad / iOS once unlocked by a tap) ---
+var audioCtx = null;
+
+// Call this from inside any button tap to create/resume the audio context.
+// iOS requires a user gesture before audio will play; once unlocked it stays unlocked
+// and timer-driven dings (setInterval) will work fine.
+function ensureAudio() {
+  if (!audioCtx) {
+    var Ctx = window.AudioContext || window.webkitAudioContext;
+    if (Ctx) audioCtx = new Ctx();
+  }
+  if (audioCtx && audioCtx.state === 'suspended') {
+    audioCtx.resume();
+  }
+}
+
+// Schedule a single ding at currentTime + delaySeconds.
+// Layered fundamental + octave overtone, master gain at max for loudness.
+function playDing(delaySeconds) {
+  if (!audioCtx) return;
+  var t0 = audioCtx.currentTime + (delaySeconds || 0);
+  var duration = 0.9;
+
+  // Master gain at maximum (1.0) -> as loud as the device volume allows.
+  var master = audioCtx.createGain();
+  master.gain.value = 1.0;
+  master.connect(audioCtx.destination);
+
+  // Fundamental 880 Hz tone with quick attack + exponential decay
+  var osc1 = audioCtx.createOscillator();
+  var g1 = audioCtx.createGain();
+  osc1.type = 'sine';
+  osc1.frequency.value = 880;
+  g1.gain.setValueAtTime(0.0001, t0);
+  g1.gain.exponentialRampToValueAtTime(0.9, t0 + 0.005);
+  g1.gain.exponentialRampToValueAtTime(0.0001, t0 + duration);
+  osc1.connect(g1).connect(master);
+  osc1.start(t0);
+  osc1.stop(t0 + duration);
+
+  // Octave overtone (1760 Hz) — fast decay, gives the "ting" attack character
+  var osc2 = audioCtx.createOscillator();
+  var g2 = audioCtx.createGain();
+  osc2.type = 'sine';
+  osc2.frequency.value = 1760;
+  g2.gain.setValueAtTime(0.0001, t0);
+  g2.gain.exponentialRampToValueAtTime(0.6, t0 + 0.005);
+  g2.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.35);
+  osc2.connect(g2).connect(master);
+  osc2.start(t0);
+  osc2.stop(t0 + 0.35);
+}
+
+function singleDing() { playDing(0); }
+function doubleDing() { playDing(0); playDing(0.65); }
+function tripleDing() { playDing(0); playDing(0.65); playDing(1.3); }
+
+function fmtTime(s) {
+  var m = Math.floor(s / 60), sec = s % 60;
+  return (m < 10 ? '0' : '') + m + ':' + (sec < 10 ? '0' : '') + sec;
+}
+
+function loadLevel(idx) {
+  if (interval) { clearInterval(interval); interval = null; }
+  running = false; rebuyWarned = false; dingWarned = false;
+  hideAllOverlays();
+  if (idx >= SCHEDULE.length) { document.getElementById('doneOverlay').classList.add('show'); return; }
+  curIdx = idx;
+  var lvl = SCHEDULE[idx];
+  totalSecs = lvl.minutes * 60;
+  secsLeft = totalSecs;
+  document.getElementById('startBtn').innerHTML = '&#9654; Start';
+  updateDisplay();
+}
+
+function updateDisplay() {
+  var lvl = SCHEDULE[curIdx];
+  var pct = secsLeft / totalSecs;
+  var isDanger = secsLeft <= 60;
+  var isWarn = !isDanger && pct <= 0.25;
+
+  // countdown
+  var cd = document.getElementById('countdown');
+  cd.textContent = fmtTime(secsLeft);
+  cd.className = 'countdown' + (isDanger ? ' danger' : isWarn ? ' warning' : '');
+
+  // progress bar
+  var bar = document.getElementById('progressBar');
+  bar.style.width = (pct * 100) + '%';
+  bar.className = 'progress-fill' + (isDanger ? ' danger' : isWarn ? ' warning' : '');
+
+  // rebuy countdown in overlay
+  document.getElementById('rebuyCountdown').textContent = fmtTime(secsLeft);
+
+  // level badge
+  document.getElementById('levelBadge').textContent = 'LEVEL ' + lvl.level;
+  document.getElementById('smallBlind').textContent = '$' + lvl.small;
+  document.getElementById('bigBlind').textContent = '$' + lvl.big;
+
+  // rebuy badge
+  document.getElementById('rebuyBadge').style.display = curIdx <= LAST_REBUY ? 'inline-flex' : 'none';
+
+  // next level preview
+  var nextEl = document.getElementById('nextLevel');
+  if (curIdx + 1 < SCHEDULE.length) {
+    var next = SCHEDULE[curIdx + 1];
+    var label = curIdx === BREAK_AFTER ? 'After break: ' : 'Next: ';
+    nextEl.innerHTML = label + '<span>$' + next.small + ' / $' + next.big + '</span>';
+  } else {
+    nextEl.textContent = 'Final Level';
+  }
+}
+
+function hideAllOverlays() {
+  ['rebuyOverlay','levelUpOverlay','breakOverlay','doneOverlay'].forEach(function(id) {
+    document.getElementById(id).classList.remove('show');
+  });
+}
+
+function toggleTimer() {
+  // Unlock audio on every Start/Pause tap — iPad's AudioContext can suspend
+  // when the page is backgrounded, so we resume defensively on each user gesture.
+  ensureAudio();
+  if (running) {
+    clearInterval(interval); interval = null;
+    running = false;
+    document.getElementById('startBtn').innerHTML = '&#9654; Resume';
+  } else {
+    // Ding on Start / Resume so the dealer gets audible confirmation the clock is running
+    singleDing();
+    running = true;
+    document.getElementById('startBtn').innerHTML = '&#9646;&#9646; Pause';
+    interval = setInterval(function() {
+      secsLeft--;
+      updateDisplay();
+
+      // 45-second warning ding
+      if (secsLeft === DING_WARN && !dingWarned) {
+        dingWarned = true;
+        doubleDing();
+      }
+
+      // rebuy warning at 5 min left in level 3
+      if (curIdx === LAST_REBUY && secsLeft === REBUY_WARN && !rebuyWarned) {
+        rebuyWarned = true;
+        document.getElementById('rebuyOverlay').classList.add('show');
+      }
+
+      // level ends
+      if (secsLeft <= 0) {
+        clearInterval(interval); interval = null;
+        running = false;
+        tripleDing();
+        setTimeout(function() {
+          if (curIdx === BREAK_AFTER) {
+            var next = SCHEDULE[curIdx + 1];
+            document.getElementById('breakNextBlinds').textContent = 'Up next: $' + next.small + ' / $' + next.big;
+            document.getElementById('breakOverlay').classList.add('show');
+          } else if (curIdx + 1 < SCHEDULE.length) {
+            var n = SCHEDULE[curIdx + 1];
+            document.getElementById('nextLevelTitle').textContent = 'LEVEL ' + n.level;
+            document.getElementById('nextLevelBlinds').textContent = '$' + n.small + ' / $' + n.big;
+            document.getElementById('levelUpOverlay').classList.add('show');
+          } else {
+            document.getElementById('doneOverlay').classList.add('show');
+          }
+        }, 100);
+      }
+    }, 1000);
+  }
+}
+
+function resetTimer() {
+  ensureAudio();
+  if (interval) { clearInterval(interval); interval = null; }
+  running = false; rebuyWarned = false; dingWarned = false;
+  secsLeft = totalSecs;
+  document.getElementById('startBtn').innerHTML = '&#9654; Start';
+  hideAllOverlays();
+  updateDisplay();
+}
+
+function dismissRebuy() { ensureAudio(); document.getElementById('rebuyOverlay').classList.remove('show'); }
+
+function advanceLevel() { ensureAudio(); loadLevel(curIdx + 1); }
+
+loadLevel(0);
+</script>
+</body>
+</html>
